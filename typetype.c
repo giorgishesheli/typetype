@@ -1,4 +1,4 @@
-#define _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE // for some reason, signal handler is fired only once without this feature test macro
 #include <curses.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +67,7 @@ void main_loop(char *buf, char *buf_opt){
 			buf_opt[cur_position] = 1;
 			cur_position++;
 			draw_top();
+			wchgat(top, 1, 0, 3, NULL);
 		} else {
 			wchgat(top, 1, 0, 2, NULL);
 		}
@@ -74,12 +75,9 @@ void main_loop(char *buf, char *buf_opt){
 
 }
 
+
 void resize_handler(int a){
 	old_handler(a);
-	//int y, x;
-	//getmaxyx(top, y, x);
-	//if(y * x < buf_count)
-		//buf_count = y*x;
 	draw_top();
 
 }
@@ -101,7 +99,9 @@ int main(int argc, char **argv){
 	//init color pairs
 	use_default_colors();
 	init_pair(1, COLOR_GREEN, -1);
-	init_pair(2, COLOR_RED, COLOR_BLACK);
+	init_pair(2, COLOR_YELLOW, COLOR_RED);
+	init_pair(3, -1, COLOR_YELLOW);
+	curs_set(0);
 
 	//init windows
 	top = newwin(LINES - LINES / 3 - 1, COLS - 2, 1, 1);
@@ -137,6 +137,7 @@ int main(int argc, char **argv){
 	mvwaddstr(bot, 1, 1, "Key: ");
 	mvwaddstr(bot, 2, 1, "Mistakes: ");
 	mvwaddstr(bot, 3, 1, "Words: ");
+	mvwaddstr(bot, 4, 1, "WPM: ");
 
 
 	//call main loop
