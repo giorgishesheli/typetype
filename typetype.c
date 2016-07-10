@@ -1,11 +1,14 @@
+/*
+GLOBAL todo:
+1. implement highlighting with chtype
+2. nonalphanumeric characters count as multiple errors
+3. during multiple mistakes, cursor remains red
+
+*/
 #define _DEFAULT_SOURCE // for some reason, signal handler is fired only once without this feature test macro
 #include <curses.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include <ctype.h>
+#include <stdlib.h>// exit
+#include <ctype.h> // isblank
 #include <signal.h>
 
 
@@ -15,9 +18,9 @@ int mistakes = 0;
 int words = 0;
 WINDOW *bot, *top;
 void (*old_handler)(int);
-int buf_count;
+int buf_count; 
 char *buf;
-char *buf_opt;
+char *buf_opt; // 0 - no highlight, 1 - green ( correct), 2 - red (mistake)
 
 
 
@@ -31,6 +34,8 @@ void draw_top(){
 	for(i = 0; i < buf_count; i++){
 		if((int) buf_opt[i]  == 1)
 			COLOR_ = COLOR_PAIR(1);
+		if((int) buf_opt[i] == 2)
+			COLOR_ = COLOR_PAIR(2);
 		if(i == cur_position)
 			getyx(top, cur_y, cur_x);
 		waddch(top, buf[i] | COLOR_);
@@ -68,9 +73,18 @@ void main_loop(char *buf, char *buf_opt){
 			cur_position++;
 			draw_top();
 			wchgat(top, 1, 0, 3, NULL);
+		} else if(ch == 127 || ch == 8){
+			buf_opt[cur_position - 1] = 0;
+			cur_position--;
+			draw_top();
+			wchgat(top, 1, 0, 3, NULL);
 		} else {
+			buf_opt[cur_position] = 2;
+			cur_position++;
+			draw_top();
 			wchgat(top, 1, 0, 2, NULL);
 		}
+
 	}
 
 }
@@ -110,7 +124,7 @@ int main(int argc, char **argv){
 	wrefresh(bot);
 
 	//initiate SIGWINCH handler
-	old_handler = signal(SIGWINCH, resize_handler); //todo - cfe
+	old_handler = signal(SIGWINCH, resize_handler); //TODO: - cfe
 
 	//read to buffer
 	int x, y;
