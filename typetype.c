@@ -1,9 +1,8 @@
 /*
-GLOBAL todo:
-1. implement highlighting with chtype
-2. nonalphanumeric characters count as multiple errors
-3. during multiple mistakes, cursor remains red
-
+* GLOBAL todo:
+* 1. implement highlighting with chtype
+* 2. nonalphanumeric characters count as multiple errors
+* 3. during multiple mistakes, cursor remains red
 */
 #define _DEFAULT_SOURCE // for some reason, signal handler is fired only once without this feature test macro
 #include <curses.h>
