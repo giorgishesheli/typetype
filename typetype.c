@@ -1,25 +1,35 @@
 /*
-* GLOBAL todo:
-* 1. implement highlighting with chtype
+* MAJOR todo:
+* 1. Add scrolling
+* 2. add WPM
+* MINOR tood:
+* 1. implement highlighting with chtype |  not a good idea
 * 2. nonalphanumeric characters count as multiple errors
-* 3. during multiple mistakes, cursor remains red
 */
-#define _DEFAULT_SOURCE // for some reason, signal handler is fired only once without this feature test macro
+#define _DEFAULT_SOURCE 
+/* Lesson learned: without feature test macro in glibc 2.22-9 signal function  acts as System V signal
+*  only gets fired once.
+*/
 #include <curses.h>
 #include <stdlib.h>// exit
 #include <ctype.h> // isblank
 #include <signal.h>
+#include <sys/time.h>  //setitimer
 
 
 //global variables
 int cur_position = 0;
 int mistakes = 0;
 int words = 0;
+int seconds;
 WINDOW *bot, *top;
-void (*old_handler)(int);
+void (*old_handler)(int); // ncurses handler for SIGWINCH
 int buf_count; 
 char *buf;
-char *buf_opt; // 0 - no highlight, 1 - green ( correct), 2 - red (mistake)
+char *buf_opt; // Holds color codes for corresponding buffer
+#define CORRECT_COLOR 1
+#define INCORRECT_COLOR 2
+#define CURSOR_COLOR 3
 
 
 
@@ -32,11 +42,13 @@ void draw_top(){
 	wmove(top, 0, 0);
 	for(i = 0; i < buf_count; i++){
 		if((int) buf_opt[i]  == 1)
-			COLOR_ = COLOR_PAIR(1);
+			COLOR_ = COLOR_PAIR(CORRECT_COLOR);
 		if((int) buf_opt[i] == 2)
-			COLOR_ = COLOR_PAIR(2);
-		if(i == cur_position)
+			COLOR_ = COLOR_PAIR(INCORRECT_COLOR);
+		if(i == cur_position){
 			getyx(top, cur_y, cur_x);
+			COLOR_ = COLOR_PAIR(CURSOR_COLOR);
+		}
 		waddch(top, buf[i] | COLOR_);
 		COLOR_ = 0;
 	}
@@ -71,17 +83,14 @@ void main_loop(char *buf, char *buf_opt){
 			buf_opt[cur_position] = 1;
 			cur_position++;
 			draw_top();
-			wchgat(top, 1, 0, 3, NULL);
 		} else if(ch == 127 || ch == 8){
 			buf_opt[cur_position - 1] = 0;
 			cur_position--;
 			draw_top();
-			wchgat(top, 1, 0, 3, NULL);
 		} else {
 			buf_opt[cur_position] = 2;
 			cur_position++;
 			draw_top();
-			wchgat(top, 1, 0, 2, NULL);
 		}
 
 	}
@@ -93,6 +102,13 @@ void resize_handler(int a){
 	old_handler(a);
 	draw_top();
 
+}
+
+void timer_handle(int a){
+	seconds += 1;	
+	int wpm = words * 60 / seconds; 
+	mvwprintw(bot, 4, 8, "%d", wpm);
+	wrefresh(bot);
 }
 
 int main(int argc, char **argv){
@@ -110,11 +126,11 @@ int main(int argc, char **argv){
 	keypad(stdscr, TRUE);
 
 	//init color pairs
-	use_default_colors();
-	init_pair(1, COLOR_GREEN, -1);
-	init_pair(2, COLOR_YELLOW, COLOR_RED);
-	init_pair(3, -1, COLOR_YELLOW);
-	curs_set(0);
+	use_default_colors(); // so we can use -1 for default values
+	init_pair(CORRECT_COLOR, COLOR_GREEN, -1);
+	init_pair(INCORRECT_COLOR, COLOR_YELLOW, COLOR_RED);
+	init_pair(CURSOR_COLOR, -1, COLOR_YELLOW);
+	curs_set(0); // makes cursor invisible
 
 	//init windows
 	top = newwin(LINES - LINES / 3 - 1, COLS - 2, 1, 1);
@@ -123,7 +139,29 @@ int main(int argc, char **argv){
 	wrefresh(bot);
 
 	//initiate SIGWINCH handler
-	old_handler = signal(SIGWINCH, resize_handler); //TODO: - cfe
+	//struct sigaction sa, sa_old;
+	//sigemptyset(&sa.sa_mask);
+	//sa.sa_flags = 0;
+	//sa.sa_handler = resize_handler;
+
+	//if(sigaction(SIGWINCH, &sa, &sa_old) == -1){
+	//	perror("sigaction");
+	//	endwin();
+	//	exit(EXIT_FAILURE);
+	//}
+	//old_handler = sa_old.sa_handler;
+	old_handler = signal(SIGWINCH, resize_handler);
+
+
+	//Init timer
+	struct itimerval itv;
+	itv.it_value.tv_sec = 1;
+	itv.it_value.tv_usec = 0;
+	itv.it_interval.tv_sec = 1;
+	itv.it_interval.tv_usec = 0;
+	setitimer(ITIMER_REAL, &itv, 0); //TODO - error checking
+	signal(SIGALRM, timer_handle);
+
 
 	//read to buffer
 	int x, y;
@@ -137,6 +175,7 @@ int main(int argc, char **argv){
 	FILE *file_src;
 	if((file_src = fopen(argv[1], "r")) == NULL){
 		perror("fopen");
+		endwin();
 		exit(EXIT_FAILURE);
 	}
 	if(fread(buf, buf_count  - 1, 1, file_src) == 0){
