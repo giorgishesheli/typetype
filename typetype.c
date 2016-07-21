@@ -5,6 +5,7 @@
 * MINOR tood:
 * 1. implement highlighting with chtype |  not a good idea
 * 2. nonalphanumeric characters count as multiple errors
+* 3. fix bottom bar
 */
 #define _DEFAULT_SOURCE 
 /* Lesson learned: without feature test macro in glibc 2.22-9 signal function  acts as System V signal
@@ -15,6 +16,8 @@
 #include <ctype.h> // isblank
 #include <signal.h>
 #include <sys/time.h>  //setitimer
+#include <unistd.h> //kill
+#include <stdio.h> // fprintf
 
 
 //global variables
@@ -37,6 +40,7 @@ char *buf_opt; // Holds color codes for corresponding buffer
 
 void draw_top(){
 	int cur_x, cur_y, i;
+	//int temp_x, temp_y;
 	int COLOR_ = 0;
 	werase(top);
 	wmove(top, 0, 0);
@@ -50,6 +54,8 @@ void draw_top(){
 			COLOR_ = COLOR_PAIR(CURSOR_COLOR);
 		}
 		waddch(top, buf[i] | COLOR_);
+		//getyx(top, temp_y, temp_x);
+		//fprintf(stderr, "added char: %c		ROW: %ld	COL: %ld 	ROW/COL: %ld/%ld\n", buf[i], (long) temp_y,(long)  temp_x, (long) LINES, (long) COLS);
 		COLOR_ = 0;
 	}
 	wmove(top, cur_y, cur_x);
@@ -60,7 +66,7 @@ void handle_bot(char ch){
 	if(buf[cur_position] != ch)
 		mistakes += 1;
 	if(buf[cur_position] == ch && isblank(ch)){
-		words += 1;
+		words += 1; //TODO - stupid placement
 	}
 	char mstk[20];
 	char wrds[20];
@@ -78,6 +84,17 @@ void handle_bot(char ch){
 void main_loop(char *buf, char *buf_opt){
 	for(;;){
 		chtype ch = wgetch(top);
+		fprintf(stderr, "freaking character typed \n");
+		if(seconds == 0){  
+			//Init timer
+			kill(getpid(), SIGALRM);
+			struct itimerval itv;
+			itv.it_value.tv_sec = 1;
+			itv.it_value.tv_usec = 0;
+			itv.it_interval.tv_sec = 1;
+			itv.it_interval.tv_usec = 0;
+			setitimer(ITIMER_REAL, &itv, NULL); //TODO - error checking
+		}
 		handle_bot(ch);
 		if(buf[cur_position] == ch){
 			buf_opt[cur_position] = 1;
@@ -100,13 +117,26 @@ void main_loop(char *buf, char *buf_opt){
 
 void resize_handler(int a){
 	old_handler(a);
+
+	refresh(); // LL: LINES and COLS are not reseted by old handler, need to call refresh
+	erase(); // LL: stdscr retains remains of top screen, even after we erase top
+
+	delwin(top);
+	delwin(bot);
+
+	top = newwin(LINES - LINES / 2 - 1, COLS - 2, 1, 1);
+	wrefresh(top);
+	bot = newwin(LINES / 3, COLS - 2, LINES - LINES/3, 1);
+	wrefresh(bot);
+
 	draw_top();
 
 }
 
 void timer_handle(int a){
 	seconds += 1;	
-	int wpm = words * 60 / seconds; 
+	int wpm =  words * 60 / seconds; 
+	mvwprintw(bot, 5, 1, "words: %d  seconds: %d  wpm: %d", words, seconds, wpm);
 	mvwprintw(bot, 4, 8, "%d", wpm);
 	wrefresh(bot);
 }
@@ -133,34 +163,28 @@ int main(int argc, char **argv){
 	curs_set(0); // makes cursor invisible
 
 	//init windows
-	top = newwin(LINES - LINES / 3 - 1, COLS - 2, 1, 1);
+	top = newwin(LINES - LINES / 2 - 1, COLS - 2, 1, 1);
 	wrefresh(top);
 	bot = newwin(LINES / 3, COLS - 2, LINES - LINES/3, 1);
 	wrefresh(bot);
 
 	//initiate SIGWINCH handler
-	//struct sigaction sa, sa_old;
-	//sigemptyset(&sa.sa_mask);
-	//sa.sa_flags = 0;
-	//sa.sa_handler = resize_handler;
+	struct sigaction sa, sa_old;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART; // LL: without RESTART blocking syscall returns in getch
+	sa.sa_handler = resize_handler;
 
-	//if(sigaction(SIGWINCH, &sa, &sa_old) == -1){
-	//	perror("sigaction");
-	//	endwin();
-	//	exit(EXIT_FAILURE);
-	//}
-	//old_handler = sa_old.sa_handler;
-	old_handler = signal(SIGWINCH, resize_handler);
+	if(sigaction(SIGWINCH, &sa, &sa_old) == -1){
+		perror("sigaction");
+		endwin();
+		exit(EXIT_FAILURE);
+	}
+	old_handler = sa_old.sa_handler;
+	//old_handler = signal(SIGWINCH, resize_handler);
 
-
-	//Init timer
-	struct itimerval itv;
-	itv.it_value.tv_sec = 1;
-	itv.it_value.tv_usec = 0;
-	itv.it_interval.tv_sec = 1;
-	itv.it_interval.tv_usec = 0;
-	setitimer(ITIMER_REAL, &itv, 0); //TODO - error checking
 	signal(SIGALRM, timer_handle);
+
+
 
 
 	//read to buffer
