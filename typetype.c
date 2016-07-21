@@ -84,7 +84,11 @@ void handle_bot(char ch){
 void main_loop(char *buf, char *buf_opt){
 	for(;;){
 		chtype ch = wgetch(top);
-		fprintf(stderr, "freaking character typed \n");
+
+		if((unsigned char) ch == 0x9a) //TODO -  VERY UGLY HACK, get to the root of the problem
+			continue;
+
+		//fprintf(stderr, "freaking character typed: %x \n", (unsigned char) ch);
 		if(seconds == 0){  
 			//Init timer
 			kill(getpid(), SIGALRM);
