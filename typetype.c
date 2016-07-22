@@ -18,12 +18,17 @@
 #include <sys/time.h>  //setitimer
 #include <unistd.h> //kill
 #include <stdio.h> // fprintf
+#include <sys/types.h> // stat
+#include <sys/stat.h> // stat
+
 
 
 //global variables
 int cur_position = 0;
 int mistakes = 0;
 int words = 0;
+size_t buf_ret_size;
+size_t file_size;
 int seconds;
 WINDOW *bot, *top;
 void (*old_handler)(int); // ncurses handler for SIGWINCH
@@ -63,6 +68,93 @@ void draw_top(){
 }
 
 void handle_bot(char ch){
+	wmove(bot, 0, 0);
+	int i;
+	if(cur_position != 0){
+		for(i = 0; i < (COLS - 3); i++){
+			if((int)((COLS - 3) / (double) ((double) file_size / cur_position)) == i){
+				//Draw the car
+				mvwaddch(bot, 0, i, ' ');
+				mvwaddch(bot, 1, i, ' ');
+				mvwaddch(bot, 2, i, '(');
+				mvwaddch(bot, 3, i, '=');
+
+				mvwaddch(bot, 0, i + 1, ' ');
+				mvwaddch(bot, 1, i + 1, '/');
+				mvwaddch(bot, 2, i + 1, ' ');
+				mvwaddch(bot, 3, i + 1, '`');
+
+				mvwaddch(bot, 0, i + 2, '_');
+				mvwaddch(bot, 1, i + 2, '|');
+				mvwaddch(bot, 2, i + 2, ' ');
+				mvwaddch(bot, 3, i + 2, '-');
+
+				mvwaddch(bot, 0, i + 3, '_');
+				mvwaddch(bot, 1, i + 3, '_');
+				mvwaddch(bot, 2, i + 3, ' ');
+				mvwaddch(bot, 3, i + 3, '(');
+
+				mvwaddch(bot, 0, i + 4, '_');
+				mvwaddch(bot, 1, i + 4, '|');
+				mvwaddch(bot, 2, i + 4, '_');
+				mvwaddch(bot, 3, i + 4, '_');
+
+				mvwaddch(bot, 0, i + 5, '_');
+				mvwaddch(bot, 1, i + 5, '|');
+				mvwaddch(bot, 2, i + 5, ' ');
+				mvwaddch(bot, 3, i + 5, ')');
+
+				mvwaddch(bot, 0, i + 6, '_');
+				mvwaddch(bot, 1, i + 6, '_');
+				mvwaddch(bot, 2, i + 6, ' ');
+				mvwaddch(bot, 3, i + 6, '-');
+
+				mvwaddch(bot, 0, i + 7, '_');
+				mvwaddch(bot, 1, i + 7, '\\');
+				mvwaddch(bot, 2, i + 7, ' ');
+				mvwaddch(bot, 3, i + 7, '-');
+
+				mvwaddch(bot, 0, i + 8, ' ');
+				mvwaddch(bot, 1, i + 8, '`');
+				mvwaddch(bot, 2, i + 8, ' ');
+				mvwaddch(bot, 3, i + 8, '(');
+
+				mvwaddch(bot, 0, i + 9, ' ');
+				mvwaddch(bot, 1, i + 9, '.');
+				mvwaddch(bot, 2, i + 9, '_');
+				mvwaddch(bot, 3, i + 9, '_');
+
+				mvwaddch(bot, 0, i + 10, ' ');
+				mvwaddch(bot, 1, i + 10, '_');
+				mvwaddch(bot, 2, i + 10, ' ');
+				mvwaddch(bot, 3, i + 10, ')');
+
+				mvwaddch(bot, 0, i + 11, ' ');
+				mvwaddch(bot, 1, i + 11, '_');
+				mvwaddch(bot, 2, i + 11, '_');
+				mvwaddch(bot, 3, i + 11, '-');
+
+				mvwaddch(bot, 0, i + 12, ' ');
+				mvwaddch(bot, 1, i + 12, ' ');
+				mvwaddch(bot, 2, i + 12, '\\');
+				mvwaddch(bot, 3, i + 12, '\'');
+
+				// Erase Trail
+				if(( i - 1)  >= 0){
+					mvwaddch(bot, 0, i - 1, ' ');
+					mvwaddch(bot, 1, i - 1, ' ');
+					mvwaddch(bot, 2, i - 1, ' ');
+					mvwaddch(bot, 3, i - 1, ' ');
+				}
+				if(( i - 1)  < (COLS - 3)){
+					mvwaddch(bot, 0, i + 13, ' ');
+					mvwaddch(bot, 1, i + 13, ' ');
+					mvwaddch(bot, 2, i + 13, ' ');
+					mvwaddch(bot, 3, i + 13, ' ');
+				}
+			}
+		}
+	}
 	if(buf[cur_position] != ch)
 		mistakes += 1;
 	if(buf[cur_position] == ch && isblank(ch)){
@@ -74,9 +166,9 @@ void handle_bot(char ch){
 	sprintf(wrds, "%d", words);
 	int cur_x, cur_y;
 	getyx(top, cur_y, cur_x);
-	mvwaddch(bot, 1, 6, ch);
-	mvwaddstr(bot, 2, 11, mstk);
-	mvwaddstr(bot, 3, 8, wrds);
+	mvwaddch(bot, 4, 6, ch);
+	mvwaddstr(bot, 5, 11, mstk);
+	mvwaddstr(bot, 6, 8, wrds);
 	wrefresh(bot);
 	wmove(top, cur_y, cur_x);
 }
@@ -86,7 +178,7 @@ void main_loop(char *buf, char *buf_opt){
 		chtype ch = wgetch(top);
 
 		if((unsigned char) ch == 0x9a) //TODO -  VERY UGLY HACK, get to the root of the problem
-			continue;
+			continue;	       // 0x9a characters show up after resize & keypress
 
 		//fprintf(stderr, "freaking character typed: %x \n", (unsigned char) ch);
 		if(seconds == 0){  
@@ -113,11 +205,8 @@ void main_loop(char *buf, char *buf_opt){
 			cur_position++;
 			draw_top();
 		}
-
 	}
-
 }
-
 
 void resize_handler(int a){
 	old_handler(a);
@@ -134,14 +223,13 @@ void resize_handler(int a){
 	wrefresh(bot);
 
 	draw_top();
-
 }
 
 void timer_handle(int a){
 	seconds += 1;	
 	int wpm =  words * 60 / seconds; 
-	mvwprintw(bot, 5, 1, "words: %d  seconds: %d  wpm: %d", words, seconds, wpm);
-	mvwprintw(bot, 4, 8, "%d", wpm);
+	//mvwprintw(bot, 5, 1, "words: %d  seconds: %d  wpm: %d", words, seconds, wpm);
+	mvwprintw(bot, 7, 8, "%d", wpm);
 	wrefresh(bot);
 }
 
@@ -167,10 +255,21 @@ int main(int argc, char **argv){
 	curs_set(0); // makes cursor invisible
 
 	//init windows
-	top = newwin(LINES - LINES / 2 - 1, COLS - 2, 1, 1);
+	top = newwin(LINES / 2, COLS - 2, 1, 1);
 	wrefresh(top);
-	bot = newwin(LINES / 3, COLS - 2, LINES - LINES/3, 1);
+	bot = newwin(LINES / 2, COLS - 2, LINES / 2, 1);
 	wrefresh(bot);
+
+	//init status bar
+	struct stat st;
+	if(stat(argv[1], &st) == -1){
+		perror("stat");
+		exit(EXIT_FAILURE);
+	}
+	file_size = st.st_size;
+
+	
+
 
 	//initiate SIGWINCH handler
 	struct sigaction sa, sa_old;
@@ -184,10 +283,8 @@ int main(int argc, char **argv){
 		exit(EXIT_FAILURE);
 	}
 	old_handler = sa_old.sa_handler;
-	//old_handler = signal(SIGWINCH, resize_handler);
 
 	signal(SIGALRM, timer_handle);
-
 
 
 
@@ -207,6 +304,7 @@ int main(int argc, char **argv){
 		exit(EXIT_FAILURE);
 	}
 	if(fread(buf, buf_count  - 1, 1, file_src) == 0){
+		fprintf(stderr, "sake sake kuca");
 		printf("end of file or read error, dunno");
 	}
 
@@ -214,10 +312,10 @@ int main(int argc, char **argv){
 	draw_top();
 
 	//Init bottom
-	mvwaddstr(bot, 1, 1, "Key: ");
-	mvwaddstr(bot, 2, 1, "Mistakes: ");
-	mvwaddstr(bot, 3, 1, "Words: ");
-	mvwaddstr(bot, 4, 1, "WPM: ");
+	mvwaddstr(bot, 4, 1, "Key: ");
+	mvwaddstr(bot, 5, 1, "Mistakes: ");
+	mvwaddstr(bot, 6, 1, "Words: ");
+	mvwaddstr(bot, 7, 1, "WPM: ");
 
 
 	//call main loop
